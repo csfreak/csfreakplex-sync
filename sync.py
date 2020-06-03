@@ -1,16 +1,33 @@
 import logging
 import os
+import sys
 import subprocess
 import configparser
 from plexapi.server import PlexServer
 from plexapi.exceptions import BadRequest
 from plexapi import utils as plexutils
 
+root = logging.getLogger()
+root.setLevel(logging.INFO)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+root.addHandler(handler)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 config = configparser.ConfigParser()
 config.read('.config')
+logger.debug("Loaded config {}".format([(section, config.options(section)) for section in config.sections()]))
 
 server = PlexServer(config['PLEX']['RemoteURI'], config['PLEX']['Token'])
+logger.debug("Connected to server {}".format(server))
+
 local_server = PlexServer(config['PLEX']['LocalURI'], config['PLEX']['Token'])
+logger.debug("Connected to server {}".format(local_server))
 
 
 def get_media_title(media):
@@ -30,16 +47,17 @@ def get_episode_title(episode):
 def optimize(media):
     for version in media.media:
         if version.target == 'Optimized for Mobile':
+            logger.debug("Found optimized version of {}".format(get_media_title(media)))
             return "Ready"
     try:
         media.optimize(targetTagID=1)
-        logging.info("Queued {}".format(get_media_title(media)))
+        logger.info("Queued {}".format(get_media_title(media)))
         return "Queued"
     except BadRequest:
-        logging.warn('unable to optimize {}.  Already Exists'.format(get_media_title(media)))
+        logger.warn('unable to optimize {}.  Already Exists'.format(get_media_title(media)))
         return "Queued"
     except Exception:
-        logging.error('unable to optimize {}.'.format(get_media_title(media)))
+        logger.error('unable to optimize {}.'.format(get_media_title(media)))
         return None
 
 
@@ -51,6 +69,9 @@ def get_taged_media(tag=config['PLEX']['MOBILE_LABEL_ID']):
                 return_media.append(episode)
         elif media.TYPE == 'movie':
             return_media.append(media)
+    logger.debug("Found Tags on Media: {}".format(
+        [get_media_title(media) for media in return_media]
+    ))
     return return_media
 
 
@@ -62,13 +83,14 @@ def get_local_media_titles():
         elif media.TYPE == 'show':
             for episode in media.episodes():
                 return_media_titles.append(get_episode_title(episode))
+    logger.debug("Found Local Titles: {}".format(return_media_titles))
     return return_media_titles
 
 
 def download_media(media):
     savepath = get_file_save_path(media)
     os.makedirs(savepath, mode=0o777, exist_ok=True)
-    logging.info("Downloading {} to {}".format(get_media_title(media), savepath))
+    logger.info("Downloading {} to {}".format(get_media_title(media), savepath))
     # modified from plexapi.base.playable
     location = [i for i in media.iterParts() if i and i.optimizedForStreaming][0]
     filename = '%s.%s' % (media._prettyfilename(), location.container)
@@ -108,13 +130,13 @@ def check_network():
     if result.get('ssid') == 'thelastresort' and result.get('wpa_state') == 'COMPLETED':
         return True
     else:
-        logging.error(result)
+        logger.error(result)
     return False
 
 
 if __name__ == '__main__':
     if not check_network():
-        logging.error("Not on HOME NETWORK")
+        logger.error("Not on HOME NETWORK")
         exit(1)
     local_titles = get_local_media_titles()
     for media in get_taged_media():
