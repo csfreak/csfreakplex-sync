@@ -1,0 +1,13 @@
+[Unit]
+Description=Runs Plex Sync Script
+Wants=csfreakplex-sync.timer
+Requires=plexmediaserver.service
+Requires=network.target
+
+[Service]
+ExecStart=/srv/csfreakplex-sync/.venv/bin/python /srv/csfreakplex-sync/sync.py
+WorkingDirectory=/srv/csfreakplex-sync
+Slice=csfreakplex-sync
+
+[Install]
+WantedBy=multi-user.target
